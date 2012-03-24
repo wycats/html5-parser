@@ -1382,6 +1382,27 @@ Tokenizer.prototype = {
     this.token.finalize(this);
     this.tokens.push(this.token);
     this.token = null;
+  },
+
+  consumeCharacterReference: function(allowed) {
+    var next = this.getChar();
+    if (next === undefined) { return; }
+
+    switch (next) {
+      case TAB:
+      case LINEFEED:
+      case FORMFEED:
+      case SPACE:
+      case "<":
+      case "&":
+      case EOF:
+      case allowed:
+        return;
+      case "#":
+        return this.consumeCharacterReferenceNumberSign();
+      default:
+        return this.consumeCharacterReferenceNamed();
+    }
   }
 };
 

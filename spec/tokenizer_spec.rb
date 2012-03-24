@@ -40,7 +40,7 @@ describe "test1" do
     digest = Digest::SHA1.hexdigest(input)
 
     it %{#{description} (processing "#{input}") - #{digest}} do
-      pending if description =~ /doctype|entity/i
+      pending if description =~ /doctype/i
 
       expected = normalize_expected(output)
       @tokenizer.tokenize(input).should == expected
