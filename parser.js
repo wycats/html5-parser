@@ -1,6 +1,11 @@
 var EOF = "";
 var REPLACEMENT = "\ufffd";
 var NULL = "\x00";
+var TAB = "\t";
+var LINEFEED = "\n";
+var FORMFEED = "\u000c";
+var SPACE = " ";
+var ANYSPACE = /[\t\n\u000c ]/;
 
 var Tk = function() {};
 Tk.prototype = {
@@ -23,26 +28,47 @@ Tk.prototype = {
   }
 };
 
-var TkChar = function(content) { this.content = content; };
+var TkError = function(from, to) {
+  this.from = from;
+  this.to = to;
+};
+TkError.prototype = Object.create(Tk.prototype);
+TkError.prototype.toTest = function() {
+  return "ParseError";
+};
+
+var TkDOCTYPE = function() {
+  this.name = this.missing;
+  this.publicIdentifier = this.missing;
+  this.systemIdentifier = this.missing;
+  this.forceQuirks = this.missing;
+};
+TkDOCTYPE.prototype = Object.create(Tk.prototype);
+TkDOCTYPE.prototype.missing = {};
+
+var TkChar = function(data) { this.data = data; };
 TkChar.prototype = Object.create(Tk.prototype);
 TkChar.prototype.name = "Character";
 TkChar.prototype.toTest = function() {
-  return [ "Character", this.content ];
+  return [ "Character", this.data ];
 };
 
 var TkEOF = function() {};
 TkEOF.prototype = Object.create(Tk.prototype);
 TkEOF.prototype.name = "EOF";
 
-var TkTag = function() {};
+var TkTag = function(tagName) {
+  this.tagName = tagName;
+  this.attributes = {};
+  this.selfClosing = false;
+};
 TkTag.prototype = Object.create(Tk.prototype);
 TkTag.prototype.addChars = function(chars) {
   this.tagName += chars;
 };
 
 var TkStartTag = function(tagName) {
-  this.tagName = tagName;
-  this.attributes = {};
+  TkTag.call(this, tagName);
 };
 TkStartTag.prototype = Object.create(TkTag.prototype);
 TkStartTag.prototype.name = "StartTag";
@@ -68,28 +94,35 @@ TkStartTag.prototype.finalize = function() {
   }
 };
 TkStartTag.prototype.toTest = function() {
-  return [ "StartTag", this.tagName, this.attributes ];
+  var tag = [ "StartTag", this.tagName, this.attributes ];
+
+  if (this.selfClosing) { tag.push(true); }
+
+  return tag;
 };
 
 var TkEndTag = function(tagName) {
-  this.tagName = tagName;
+  TkTag.call(this, tagName);
 };
 TkEndTag.prototype = Object.create(TkTag.prototype);
 TkEndTag.prototype.name = "endTag";
+TkEndTag.prototype.newAttribute = function() {};
+TkEndTag.prototype.pushAttributeName = function() {};
+TkEndTag.prototype.pushAttributeValue = function() {};
 TkEndTag.prototype.toTest = function() {
   return [ "EndTag", this.tagName ];
 };
 
 var TkComment = function() {
-  this.body = "";
+  this.data = "";
 };
 TkComment.prototype = Object.create(Tk.prototype);
 TkComment.prototype.name = "comment";
 TkComment.prototype.addChars = function(chars) {
-  this.body += chars;
+  this.data += chars;
 };
 TkComment.prototype.toTest = function() {
-  return [ "Comment", this.body ];
+  return [ "Comment", this.data ];
 };
 
 var states = {};
@@ -109,15 +142,15 @@ states.data = {
         case NULL:
           lexer.parseError();
           lexer.setToken(TkChar, next);
-          lexer.pushCurrentToken();
+          lexer.emitCurrentToken();
           break;
         case EOF:
           lexer.setToken(TkEOF);
-          lexer.pushCurrentToken();
+          lexer.emitCurrentToken();
           break;
         default:
           lexer.setToken(TkChar, next);
-          lexer.pushCurrentToken();
+          lexer.emitCurrentToken();
       }
     });
   }
@@ -201,7 +234,7 @@ states.endTagOpen = {
         lexer.errorState('data');
         tokens.push(new TkChar("<"));
         tokens.push(new TkChar("/"));
-        lexer.pos--;
+        lexer.reconsume();
       } else {
         lexer.errorState('bogusComment');
       }
@@ -214,13 +247,13 @@ states.tagName = {
 
   consume: function(lexer) {
     lexer.consume(function(next, token, tokens) {
-      if (next === "\t" || next === "\n" || next === "\u000c" || next === " ") {
+      if (ANYSPACE.test(next)) {
         lexer.setState('beforeAttributeName');
       } else if (next === "/") {
         lexer.setState('selfClosingStartTag');
       } else if (next === ">") {
         lexer.setState('data');
-        lexer.pushCurrentToken();
+        lexer.emitCurrentToken();
       } else if (/[A-Z]/.test(next)) {
         token.addChars(next.toLowerCase());
       } else if (next === NULL) {
@@ -228,7 +261,7 @@ states.tagName = {
         token.addChars(REPLACEMENT);
       } else if (next === EOF) {
         lexer.errorState('data');
-        lexer.pos--;
+        lexer.reconsume();
       } else {
         token.addChars(next);
       }
@@ -289,16 +322,14 @@ states.scriptDataLessThan = {
           break;
         case "!":
           lexer.setState('scriptDataEscapeStart');
-          lexer.setToken(TkChar, "<");
-          lexer.pushCurrentToken();
-          lexer.setToken(TkChar, "!");
-          lexer.pushCurrentToken();
+          lexer.pushToken(TkChar, "<");
+          lexer.pushToken(TkChar, "!");
           break;
         default:
           lexer.setState('scriptData');
           lexer.setToken(TkChar, "<");
-          lexer.pushCurrentToken();
-          lexer.pos--;
+          lexer.emitCurrentToken();
+          lexer.reconsume();
       }
     });
   }
@@ -315,10 +346,8 @@ states.scriptDataEndTagOpen = {
         lexer.setToken(TkEndTag, next.toLowerCase());
       } else {
         lexer.setState('scriptData');
-        lexer.setToken(TkChar, "<");
-        lexer.pushCurrentToken();
-        lexer.setToken(TkChar, "/");
-        lexer.pushCurrentToken();
+        lexer.pushToken(TkChar, "<");
+        lexer.pushToken(TkChar, "/");
       }
     });
   }
@@ -328,6 +357,31 @@ states.scriptDataEndTagName = {
   toString: function() { return "scriptDataEndTagName"; },
 
   consume: function(lexer) {
+    var isAppropriate = lexer.isAppropriateEndTag();
+
+    lexer.consume(function(next, token) {
+      if (ANYSPACE.test(next) && isAppropriate) {
+        lexer.setState('beforeAttribute');
+      } else if (next === "/" && isAppropriate) {
+        lexer.setState('selfClosingStartTag');
+      } else if (next === ">" && isAppropriate) {
+        lexer.setState('data');
+        lexer.emitCurrentToken();
+      } else if (/[A-Za-z]/.test(next)) {
+        token.addChars(next.toLowerCase());
+        lexer.tmpBuffer += next;
+      } else {
+        lexer.setState('scriptData');
+        lexer.pushToken(TkChar, "<");
+        lexer.pushToken(TkChar, "/");
+
+        lexer.eachTmpBufferChar(function(char) {
+          lexer.pushToken(TkChar, char);
+        });
+
+        lexer.reconsume();
+      }
+    });
   }
 };
 
@@ -434,13 +488,13 @@ states.beforeAttributeName = {
 
   consume: function(lexer) {
     lexer.consume(function(next, token, tokens) {
-      if (next === "\t" || next === "\n" || next === "\u000c" || next === " ") {
+      if (ANYSPACE.test(next)) {
         // ignore
       } else if (next === "/") {
         lexer.setState('selfClosingStartTag');
       } else if (next === ">") {
         lexer.setState('data');
-        lexer.pushCurrentToken();
+        lexer.emitCurrentToken();
       } else if (/[A-Z]/.test(next)) {
         lexer.setState('attributeName');
         token.newAttribute(next.toLowerCase());
@@ -466,7 +520,7 @@ states.attributeName = {
 
   consume: function(lexer) {
     lexer.consume(function (next, token, tokens) {
-      if (next === "\t" || next === "\n" || next === "\u000c" || next === " ") {
+      if (ANYSPACE.test(next)) {
         lexer.setState('afterAttributeName');
       } else if (next === "/") {
         lexer.setState('selfClosingStartTag');
@@ -474,7 +528,7 @@ states.attributeName = {
         lexer.setState('beforeAttributeValue');
       } else if (next === ">") {
         lexer.setState('data');
-        lexer.pushCurrentToken();
+        lexer.emitCurrentToken();
       } else if (/[A-Z]/.test(next)) {
         token.attributeName += next;
       } else if (next === NULL) {
@@ -498,7 +552,7 @@ states.afterAttributeName = {
 
   consume: function(lexer) {
     lexer.consume(function(next, token) {
-      if (next === "\t" || next === "\n" || next === "\u000c" || next === " ") {
+      if (ANYSPACE.test(next)) {
         // ignore
       } else if (next === "/") {
         lexer.setState('selfClosingStartTag');
@@ -506,7 +560,7 @@ states.afterAttributeName = {
         lexer.setState('beforeAttributeValue');
       } else if (next === ">") {
         lexer.setState('data');
-        lexer.pushCurrentToken();
+        lexer.emitCurrentToken();
       } else if (/[A-Z]/.test(next)) {
         lexer.setState('attributeName');
         token.newAttribute(next.toLowerCase());
@@ -533,17 +587,17 @@ states.beforeAttributeValue = {
   consume: function(lexer) {
     lexer.consume(function(next, token, tokens) {
       switch (next) {
-        case "\t":
-        case "\n":
-        case "\u000c":
-        case " ":
+        case TAB:
+        case LINEFEED:
+        case FORMFEED:
+        case SPACE:
           break;
         case "\"":
           lexer.setState('attributeValueDoubleQuoted');
           break;
         case "&":
           lexer.setState('attributeValueUnquoted');
-          lexer.pos--;
+          lexer.reconsume();
           break;
         case "'":
           lexer.setState('attributeValueSingleQuoted');
@@ -551,7 +605,7 @@ states.beforeAttributeValue = {
         case NULL:
         case ">":
           lexer.errorState('data');
-          lexer.pushCurrentToken();
+          lexer.emitCurrentToken();
           break;
         case "<":
         case "=":
@@ -632,14 +686,14 @@ states.attributeValueUnquoted = {
         case "\n":
         case "\u000c":
         case " ":
-          lexer.setState('beforeAttributeValue');
+          lexer.setState('beforeAttributeName');
           break;
         case "&":
           // TODO: character reference in attribute value
           break;
         case ">":
           lexer.setState('data');
-          lexer.pushCurrentToken();
+          lexer.emitCurrentToken();
           break;
         case NULL:
           lexer.parseError();
@@ -687,14 +741,14 @@ states.afterAttributeValueQuoted = {
           break;
         case ">":
           lexer.setState('data');
-          lexer.pushCurrentToken();
+          lexer.emitCurrentToken();
           break;
         case EOF:
           lexer.errorState('data');
           break;
         default:
           lexer.errorState('beforeAttributeName');
-          lexer.pos--;
+          lexer.reconsume();
       }
     });
   }
@@ -704,6 +758,21 @@ states.selfClosingStartTag = {
   toString: function() { return "selfClosingStartTag"; },
 
   consume: function(lexer) {
+    lexer.consume(function(next, token) {
+      switch (next) {
+        case ">":
+          lexer.setState('data');
+          token.selfClosing = true;
+          lexer.emitCurrentToken();
+          break;
+        case EOF:
+          lexer.errorState('data');
+          break;
+        default:
+          lexer.errorState('beforeAttributeName');
+          lexer.reconsume();
+      }
+    });
   }
 };
 
@@ -724,7 +793,7 @@ states.markupDeclarationOpen = {
       lexer.setToken(TkComment);
     } else if (/DOCTYPE/i.test(lexer.peek(7))) {
       lexer.getChars(7);
-      lexer.setState('doctype');
+      lexer.setState('DOCTYPE');
     } else if (false) /* TODO: current node, not in HTML namespace, matching CDATA */ {
 
     } else {
@@ -748,7 +817,7 @@ states.commentStart = {
           break;
         case EOF:
           lexer.errorState('data');
-          lexer.pushCurrentToken();
+          lexer.emitCurrentToken();
           break;
         default:
           token.addChars(next);
@@ -772,11 +841,11 @@ states.commentStartDash = {
           break;
         case ">":
           lexer.errorState('data');
-          lexer.pushCurrentToken();
+          lexer.emitCurrentToken();
           break;
         case EOF:
           lexer.errorState('data');
-          lexer.pushCurrentToken();
+          lexer.emitCurrentToken();
           break;
         default:
           lexer.setState('comment');
@@ -801,7 +870,7 @@ states.comment = {
           break;
         case EOF:
           lexer.errorState('data');
-          lexer.pushCurrentToken();
+          lexer.emitCurrentToken();
           break;
         default:
           token.addChars(next);
@@ -825,7 +894,7 @@ states.commentEndDash = {
           break;
         case EOF:
           lexer.errorState('data');
-          lexer.pushCurrentToken();
+          lexer.emitCurrentToken();
           break;
         default:
           lexer.setState('comment');
@@ -843,7 +912,7 @@ states.commentEnd = {
       switch (next) {
         case ">":
           lexer.setState('data');
-          lexer.pushCurrentToken();
+          lexer.emitCurrentToken();
           break;
         case NULL:
           lexer.errorState('comment');
@@ -858,7 +927,7 @@ states.commentEnd = {
           break;
         case EOF:
           lexer.errorState('data');
-          lexer.pushCurrentToken();
+          lexer.emitCurrentToken();
           break;
         default:
           lexer.errorState('comment');
@@ -880,7 +949,7 @@ states.commentEndBang = {
           break;
         case ">":
           lexer.setState('data');
-          lexer.pushCurrentToken();
+          lexer.emitCurrentToken();
           break;
         case NULL:
           lexer.errorState('comment');
@@ -888,7 +957,7 @@ states.commentEndBang = {
           break;
         case EOF:
           lexer.errorState('data');
-          lexer.pushCurrentToken();
+          lexer.emitCurrentToken();
           break;
         default:
           lexer.setState('comment');
@@ -902,13 +971,53 @@ states.DOCTYPE = {
   toString: function() { return "DOCTYPE"; },
 
   consume: function(lexer) {
+    lexer.consume(function(next, token) {
+      if (ANYSPACE.test(next)) {
+        lexer.setState('beforeDOCTYPEName');
+      } else if (next === EOF) {
+        lexer.errorState('data');
+        lexer.setToken(TkDOCTYPE);
+        lexer.token.forceQuirks = true;
+        lexer.emitCurrentToken();
+      } else {
+        lexer.errorState('beforeDOCTYPEName');
+        lexer.reconsume();
+      }
+    });
   }
 };
 
-states.beforeDOCTYPE = {
-  toString: function() { return "beforeDOCTYPE"; },
+states.beforeDOCTYPEName = {
+  toString: function() { return "beforeDOCTYPEName"; },
 
   consume: function(lexer) {
+    lexer.consume(function(next, token) {
+      if (ANYSPACE.test(next)) {
+        // ignore
+      } else if (/[A-Z]/.test(next)) {
+        lexer.setState('DOCTYPEName');
+        lexer.setToken(TkDOCTYPE);
+        lexer.token.name = next.toLowerCase();
+      } else if (next === NULL) {
+        lexer.errorState('DOCTYPEName');
+        lexer.setToken(TkDOCTYPE);
+        lexer.token.name = REPLACEMENT;
+      } else if (next === ">") {
+        lexer.errorState('data');
+        lexer.setToken(TkDOCTYPE);
+        lexer.token.forceQuirks = true;
+        lexer.emitCurrentToken();
+      } else if (next === EOF) {
+        lexer.errorState('data');
+        lexer.setToken(TkDOCTYPE);
+        lexer.token.forceQuirks = true;
+        lexer.emitCurrentToken();
+      } else {
+        lexer.setState('DOCTYPEName');
+        lexer.setToken(TkDOCTYPE);
+        lexer.token.name = next;
+      }
+    });
   }
 };
 
@@ -916,13 +1025,57 @@ states.DOCTYPEName = {
   toString: function() { return "DOCTYPEName"; },
 
   consume: function(lexer) {
+    lexer.consume(function(next, token) {
+      if (ANYSPACE.test(next)) {
+        lexer.setState('afterDOCTYPEName');
+      } else if (next === ">") {
+        lexer.setState('data');
+        lexer.emitCurrentToken();
+      } else if (/[A-Z]/.test(next)) {
+        token.name += next.toLowerCase();
+      } else if (next === NULL) {
+        lexer.parseError();
+        token.name += REPLACEMENT;
+      } else if (next === EOF) {
+        lexer.errorState('data');
+        token.forceQuirks = true;
+        lexer.emitCurrentToken();
+      } else {
+        token.name += next;
+      }
+    });
   }
 };
 
-states.afterDOCTYPE = {
+states.afterDOCTYPEName = {
   toString: function() { return "afterDOCTYPE"; },
 
   consume: function(lexer) {
+    lexer.consume(function(next, token) {
+      if (ANYSPACE.test(next)) {
+        // ignore
+      } else if (next === ">") {
+        lexer.setState('data');
+        lexer.emitCurrentToken();
+      } else if (next === EOF) {
+        lexer.errorState('data');
+        token.forceQuirks = true;
+        lexer.emitCurrentToken();
+      } else {
+        var nextSix = lexer.peek(6);
+
+        if (/public/i.test(nextSix)) {
+          lexer.getChars(6);
+          lexer.setState('afterDOCTYPEPublicKeyword');
+        } else if (/system/i.test(nextSix)) {
+          lexer.getChars(6);
+          lexer.setState('afterDOCTYPESystemKeyword');
+        } else {
+          lexer.errorState('bogusDOCTYPE');
+          token.forceQuirks = true;
+        }
+      }
+    });
   }
 };
 
@@ -930,6 +1083,35 @@ states.afterDOCTYPEPublicKeyword = {
   toString: function() { return "afterDOCTYPEPublicKeyword"; },
 
   consume: function(lexer) {
+    lexer.consume(function(next, token) {
+      switch (next) {
+        case TAB:
+        case LINEFEED:
+        case FORMFEED:
+        case SPACE:
+          lexer.setState('beforeDOCTYPEPublicIdentifier');
+          break;
+        case "\"":
+          lexer.errorState('DOCTYPEPublicIdentifierDoubleQuoted');
+          break;
+        case "'":
+          lexer.errorState('DOCTYPEPublicIdentifierSingleQuoted');
+          break;
+        case ">":
+          lexer.errorState('data');
+          token.forceQuirks = true;
+          lexer.emitCurrentToken();
+          break;
+        case EOF:
+          lexer.errorState('data');
+          token.forceQuirks = true;
+          lexer.emitCurrentToken();
+          break;
+        default:
+          lexer.errorState('bogusDOCTYPE');
+          token.forceQuirks = true;
+      }
+    });
   }
 };
 
@@ -937,6 +1119,37 @@ states.beforeDOCTYPEPublicIdentifier = {
   toString: function() { return "beforeDOCTYPEPublicIdentifier"; },
 
   consume: function(lexer) {
+    lexer.consume(function(next, token) {
+      switch (next) {
+        case TAB:
+        case LINEFEED:
+        case FORMFEED:
+        case SPACE:
+          // ignore
+          break;
+        case "\"":
+          lexer.setState('DOCTYPEPublicIdentifierDoubleQuoted');
+          token.publicIdentifier = "";
+          break;
+        case "'":
+          lexer.setState('DOCTYPEPublicIdentifierSingleQuoted');
+          token.publicIdentifier = "";
+          break;
+        case ">":
+          lexer.errorState('data');
+          token.forceQuirks = true;
+          lexer.emitCurrentToken();
+          break;
+        case EOF:
+          lexer.errorState('data');
+          token.forceQuirks = true;
+          lexer.emitCurrentToken();
+          break;
+        default:
+          lexer.errorState('bogusDOCTYPE');
+          token.forceQuirks = true;
+      }
+    });
   }
 };
 
@@ -1039,6 +1252,8 @@ Tokenizer.prototype = {
       msg += toState || this.state.toString();
       msg += " tokens so far: " + this.tokens.map(function(token) { return token.toTest(); });
       throw msg;
+    } else {
+      this.tokens.push(new TkError(this.state.toString(), toState || this.state.toString()));
     }
   },
 
@@ -1060,12 +1275,29 @@ Tokenizer.prototype = {
     this.token = new token(param);
   },
 
+  pushToken: function(token, param) {
+    this.token = new token(param);
+    this.emitCurrentToken();
+  },
+
+  eachTmpBufferChar: function(callback, binding) {
+    var tmpBuffer = this.tmpBuffer;
+
+    for (var i=0, l=tmpBuffer.length; i<l; i++) {
+      callback.call(binding, tmpBuffer[i]);
+    }
+  },
+
   getChar: function() {
     return this.input.charAt(this.pos++);
   },
 
   getChars: function(n) {
     return this.input.slice(this.pos, this.pos += n);
+  },
+
+  reconsume: function() {
+    this.pos--;
   },
 
   peek: function(n) {
@@ -1076,7 +1308,7 @@ Tokenizer.prototype = {
     }
   },
 
-  pushCurrentToken: function() {
+  emitCurrentToken: function() {
     this.token.finalize();
     this.tokens.push(this.token);
     this.token = null;
@@ -1084,7 +1316,8 @@ Tokenizer.prototype = {
 };
 
 var input = "<div id='1' class=foo>hi</div><!-- hi --><p><!-- bye --></p><span style=zomg zomg>";
-var lexer = new Tokenizer(input, true);
+input = "<h a='b'c='d'><!-- foo -->bar";
+var lexer = new Tokenizer(input);
 lexer.lex();
 
 console.log(lexer.tokens.map(function(token) { return token.toTest(); }));
