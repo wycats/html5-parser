@@ -24,7 +24,7 @@ Tk.prototype = {
   finalize: function() {},
 
   toTest: function() {
-    return [ this.testName ];
+    return [ this.name ];
   }
 };
 
@@ -72,10 +72,8 @@ var TkStartTag = function(tagName) {
 };
 TkStartTag.prototype = Object.create(TkTag.prototype);
 TkStartTag.prototype.name = "StartTag";
-TkStartTag.prototype.newAttribute = function(name) {
-  if (this.attributeName) {
-    this.attributes[this.attributeName] = this.attributeValue;
-  }
+TkStartTag.prototype.newAttribute = function(name, lexer) {
+  this.finalizeAttribute(lexer);
 
   this.attributeName = name;
   this.attributeValue = "";
@@ -86,12 +84,20 @@ TkStartTag.prototype.pushAttributeName = function(char) {
 TkStartTag.prototype.pushAttributeValue = function(char) {
   this.attributeValue += char;
 };
-TkStartTag.prototype.finalize = function() {
+TkStartTag.prototype.finalizeAttribute = function(lexer) {
   if (this.attributeName) {
-    this.attributes[this.attributeName] = this.attributeValue;
+    if (this.attributes.hasOwnProperty(this.attributeName)) {
+      lexer.tokens.push(new TkError("DuplicateAttribute"));
+    } else {
+      this.attributes[this.attributeName] = this.attributeValue;
+    }
+
     delete this.attributeName;
     delete this.attributeValue;
   }
+};
+TkStartTag.prototype.finalize = function(lexer) {
+  this.finalizeAttribute(lexer);
 };
 TkStartTag.prototype.toTest = function() {
   var tag = [ "StartTag", this.tagName, this.attributes ];
@@ -106,15 +112,22 @@ var TkEndTag = function(tagName) {
 };
 TkEndTag.prototype = Object.create(TkTag.prototype);
 TkEndTag.prototype.name = "endTag";
-TkEndTag.prototype.newAttribute = function() {};
+TkEndTag.prototype.newAttribute = function() {
+  this.sawAttributes = true;
+};
 TkEndTag.prototype.pushAttributeName = function() {};
 TkEndTag.prototype.pushAttributeValue = function() {};
+TkEndTag.prototype.finalize = function(lexer) {
+  if (this.sawAttributes) {
+    lexer.tokens.push(new TkError("EndTag", "EndTag"));
+  }
+};
 TkEndTag.prototype.toTest = function() {
   return [ "EndTag", this.tagName ];
 };
 
-var TkComment = function() {
-  this.data = "";
+var TkComment = function(data) {
+  this.data = data || "";
 };
 TkComment.prototype = Object.create(Tk.prototype);
 TkComment.prototype.name = "comment";
@@ -160,6 +173,7 @@ states.charRefInData = {
   toString: function() { return "charRefInData"; },
 
   consume: function(lexer) {
+    throw "Not implemented";
   }
 };
 
@@ -167,6 +181,7 @@ states.RCDATA = {
   toString: function() { return "RCDATA"; },
 
   consume: function(lexer) {
+    throw "Not implemented";
   }
 };
 
@@ -174,6 +189,7 @@ states.charRefInRCDATA = {
   toString: function() { return "charRefInRCDATA"; },
 
   consume: function(lexer) {
+    throw "Not implemented";
   }
 };
 
@@ -181,6 +197,7 @@ states.RAWTEXT = {
   toString: function() { return "RAWTEXT"; },
 
   consume: function(lexer) {
+    throw "Not implemented";
   }
 };
 
@@ -188,6 +205,7 @@ states.scriptData = {
   toString: function() { return "scriptData"; },
 
   consume: function(lexer) {
+    throw "Not implemented";
   }
 };
 
@@ -195,6 +213,7 @@ states.PLAINTEXT = {
   toString: function() { return "PLAINTEXT"; },
 
   consume: function(lexer) {
+    throw "Not implemented";
   }
 };
 
@@ -211,10 +230,12 @@ states.tagOpen = {
         lexer.setState('tagName');
         lexer.setToken(TkStartTag, next.toLowerCase());
       } else if (next === "?") {
+        lexer.setToken(TkComment, next);
         lexer.errorState('bogusComment');
       } else {
         lexer.errorState('data');
-        lexer.setToken(TkChar, "<");
+        lexer.pushToken(TkChar, "<");
+        lexer.reconsume();
       }
     });
   }
@@ -236,6 +257,7 @@ states.endTagOpen = {
         tokens.push(new TkChar("/"));
         lexer.reconsume();
       } else {
+        lexer.setToken(TkComment, next);
         lexer.errorState('bogusComment');
       }
     });
@@ -273,6 +295,7 @@ states.RCDATALessThan = {
   toString: function() { return "RCDATALessThan"; },
 
   consume: function(lexer) {
+    throw "Not implemented";
   }
 };
 
@@ -280,6 +303,7 @@ states.RCDATAEndTagOpen = {
   toString: function() { return "RCDATAEndTagOpen"; },
 
   consume: function(lexer) {
+    throw "Not implemented";
   }
 };
 
@@ -287,6 +311,7 @@ states.RCDATAEndTagName = {
   toString: function() { return "RCDATAEndTagName"; },
 
   consume: function(lexer) {
+    throw "Not implemented";
   }
 };
 
@@ -294,6 +319,7 @@ states.RAWTEXTLessThan = {
   toString: function() { return "RAWTEXTLessThan"; },
 
   consume: function(lexer) {
+    throw "Not implemented";
   }
 };
 
@@ -301,6 +327,7 @@ states.RAWTEXTEndTagOpen = {
   toString: function() { return "RAWTEXTEndTagOpen"; },
 
   consume: function(lexer) {
+    throw "Not implemented";
   }
 };
 
@@ -308,6 +335,7 @@ states.RAWTEXTEndTagName = {
   toString: function() { return "RAWTEXTEndTagName"; },
 
   consume: function(lexer) {
+    throw "Not implemented";
   }
 };
 
@@ -389,6 +417,7 @@ states.scriptDataEscapeStart = {
   toString: function() { return "scriptDataEscapeStart"; },
 
   consume: function(lexer) {
+    throw "Not implemented";
   }
 };
 
@@ -396,6 +425,7 @@ states.scriptDataEscapeStartDash = {
   toString: function() { return "scriptDataEscapeStartDash"; },
 
   consume: function(lexer) {
+    throw "Not implemented";
   }
 };
 
@@ -403,6 +433,7 @@ states.scriptDataEscaped = {
   toString: function() { return "scriptDataEscaped"; },
 
   consume: function(lexer) {
+    throw "Not implemented";
   }
 };
 
@@ -410,6 +441,7 @@ states.scriptDataEscapedDash = {
   toString: function() { return "scriptDataEscapedDash"; },
 
   consume: function(lexer) {
+    throw "Not implemented";
   }
 };
 
@@ -417,6 +449,7 @@ states.scriptDataEscapedDashDash = {
   toString: function() { return "scriptDataEscapedDashDash"; },
 
   consume: function(lexer) {
+    throw "Not implemented";
   }
 };
 
@@ -424,6 +457,7 @@ states.scriptDataEscapedLessThan = {
   toString: function() { return "scriptDataEscapedLessThan"; },
 
   consume: function(lexer) {
+    throw "Not implemented";
   }
 };
 
@@ -431,6 +465,7 @@ states.scriptDataEscapedEndTagOpen = {
   toString: function() { return "scriptDataEscapedEndTagOpen"; },
 
   consume: function(lexer) {
+    throw "Not implemented";
   }
 };
 
@@ -438,6 +473,7 @@ states.scriptDataEscapedEndTagName = {
   toString: function() { return "scriptDataEscapedEndTagName"; },
 
   consume: function(lexer) {
+    throw "Not implemented";
   }
 };
 
@@ -445,6 +481,7 @@ states.scriptDataDoubleEscapeStart = {
   toString: function() { return "scriptDataDoubleEscapeStart"; },
 
   consume: function(lexer) {
+    throw "Not implemented";
   }
 };
 
@@ -452,6 +489,7 @@ states.scriptDataDoubleEscaped = {
   toString: function() { return "scriptDataDoubleEscaped"; },
 
   consume: function(lexer) {
+    throw "Not implemented";
   }
 };
 
@@ -459,6 +497,7 @@ states.scriptDataDoubleEscapedDash = {
   toString: function() { return "scriptDataDoubleEscapedDash"; },
 
   consume: function(lexer) {
+    throw "Not implemented";
   }
 };
 
@@ -466,6 +505,7 @@ states.scriptDataDoubleEscapedDashDash = {
   toString: function() { return "scriptDataDoubleEscapedDashDash"; },
 
   consume: function(lexer) {
+    throw "Not implemented";
   }
 };
 
@@ -473,6 +513,7 @@ states.scriptDataDoubleEscapedLessThan = {
   toString: function() { return "scriptDataDoubleEscapedDashDash"; },
 
   consume: function(lexer) {
+    throw "Not implemented";
   }
 };
 
@@ -480,6 +521,7 @@ states.scriptDataDoubleEscapeEnd = {
   toString: function() { return "scriptDataDoubleEscapeEnd"; },
 
   consume: function(lexer) {
+    throw "Not implemented";
   }
 };
 
@@ -497,19 +539,19 @@ states.beforeAttributeName = {
         lexer.emitCurrentToken();
       } else if (/[A-Z]/.test(next)) {
         lexer.setState('attributeName');
-        token.newAttribute(next.toLowerCase());
+        token.newAttribute(next.toLowerCase(), lexer);
       } else if (next === NULL) {
         lexer.errorState('attributeName');
-        token.newAttribute(REPLACEMENT);
+        token.newAttribute(REPLACEMENT, lexer);
       } else if (next === "\"" || next === "'" || next === "<" || next === "=") {
         // same as else below
         lexer.errorState('attributeName');
-        token.newAttribute(next);
+        token.newAttribute(next, lexer);
       } else if (next === EOF) {
         lexer.errorState('data');
       } else {
         lexer.setState('attributeName');
-        token.newAttribute(next);
+        token.newAttribute(next, lexer);
       }
     });
   }
@@ -563,19 +605,19 @@ states.afterAttributeName = {
         lexer.emitCurrentToken();
       } else if (/[A-Z]/.test(next)) {
         lexer.setState('attributeName');
-        token.newAttribute(next.toLowerCase());
+        token.newAttribute(next.toLowerCase(), lexer);
       } else if (next === NULL) {
         lexer.errorState('attributeName');
-        token.newAttribute(REPLACEMENT);
+        token.newAttribute(REPLACEMENT, lexer);
       } else if (next === "\"" || next === "'" || next === "<") {
         // same as else below
         lexer.errorState('attributeName');
-        token.newAttribute(next);
+        token.newAttribute(next, lexer);
       } else if (next === EOF) {
         lexer.errorState('data');
       } else {
         lexer.setState('attributeName');
-        token.newAttribute(next);
+        token.newAttribute(next, lexer);
       }
     });
   }
@@ -721,6 +763,7 @@ states.charRefInAttributeValue = {
   toString: function() { return "charRefInAttributeValue"; },
 
   consume: function(lexer) {
+    throw "Not implemented";
   }
 };
 
@@ -780,6 +823,20 @@ states.bogusComment = {
   toString: function() { return "bogusComment"; },
 
   consume: function(lexer) {
+    lexer.consume(function(next, token) {
+      switch (next) {
+        case NULL:
+          token.addChars(REPLACEMENT);
+          break;
+        case EOF:
+        case ">":
+          lexer.setState('data');
+          lexer.emitCurrentToken();
+          break;
+        default:
+          token.addChars(next);
+      }
+    });
   }
 };
 
@@ -789,7 +846,7 @@ states.markupDeclarationOpen = {
   consume: function(lexer) {
     if (lexer.peek(2) === "--") {
       lexer.getChars(2);
-      lexer.setState('comment');
+      lexer.setState('commentStart');
       lexer.setToken(TkComment);
     } else if (/DOCTYPE/i.test(lexer.peek(7))) {
       lexer.getChars(7);
@@ -797,6 +854,7 @@ states.markupDeclarationOpen = {
     } else if (false) /* TODO: current node, not in HTML namespace, matching CDATA */ {
 
     } else {
+      lexer.setToken(TkComment);
       lexer.errorState('bogusComment');
     }
   }
@@ -812,14 +870,15 @@ states.commentStart = {
           lexer.setState('commentStartDash');
           break;
         case ">":
-          lexer.parseError();
-          token.addChars(REPLACEMENT);
+          lexer.errorState('data');
+          lexer.emitCurrentToken();
           break;
         case EOF:
           lexer.errorState('data');
           lexer.emitCurrentToken();
           break;
         default:
+          lexer.setState('comment');
           token.addChars(next);
       }
     });
@@ -827,10 +886,10 @@ states.commentStart = {
 };
 
 states.commentStartDash = {
-  toString: function() { return "commentStart"; },
+  toString: function() { return "commentStartDash"; },
 
   consume: function(lexer) {
-    lexer.consume(function() {
+    lexer.consume(function(next, token) {
       switch (next) {
         case "-":
           lexer.setState('commentEnd');
@@ -856,7 +915,7 @@ states.commentStartDash = {
 };
 
 states.comment = {
-  toString: function() { return "commentStart"; },
+  toString: function() { return "comment"; },
 
   consume: function(lexer) {
     lexer.consume(function(next, token) {
@@ -923,7 +982,7 @@ states.commentEnd = {
           break;
         case "-":
           lexer.parseError();
-          lexer.addChars("-");
+          token.addChars("-");
           break;
         case EOF:
           lexer.errorState('data');
@@ -1157,6 +1216,7 @@ states.DOCTYPEPublicIdentifierDoubleQuoted = {
   toString: function() { return "DOCTYPEPublicIdentifierDoubleQuoted"; },
 
   consume: function(lexer) {
+    throw "Not implemented";
   }
 };
 
@@ -1164,6 +1224,7 @@ states.DOCTYPEPublicIdentifierSingleQuoted = {
   toString: function() { return "DOCTYPEPublicIdentifierSingleQuoted"; },
 
   consume: function(lexer) {
+    throw "Not implemented";
   }
 };
 
@@ -1171,6 +1232,7 @@ states.afterDOCTYPEPublicIdentifier = {
   toString: function() { return "afterDOCTYPEPublicIdentifier"; },
 
   consume: function(lexer) {
+    throw "Not implemented";
   }
 };
 
@@ -1178,6 +1240,7 @@ states.betweenDOCTYPEPublicAndSystemIdentifier = {
   toString: function() { return "betweenDOCTYPEPublicAndSystemIdentifier"; },
 
   consume: function(lexer) {
+    throw "Not implemented";
   }
 };
 
@@ -1185,6 +1248,7 @@ states.afterDOCTYPESystemKeyword = {
   toString: function() { return "afterDOCTYPESystemKeyword"; },
 
   consume: function(lexer) {
+    throw "Not implemented";
   }
 };
 
@@ -1192,6 +1256,7 @@ states.beforeDOCTYPESystemIdentifier = {
   toString: function() { return "tagOpen"; },
 
   consume: function(lexer) {
+    throw "Not implemented";
   }
 };
 
@@ -1199,6 +1264,7 @@ states.DOCTYPESystemIdentifierDoubleQuoted = {
   toString: function() { return "DOCTYPESystemIdentifierDoubleQuoted"; },
 
   consume: function(lexer) {
+    throw "Not implemented";
   }
 };
 
@@ -1206,6 +1272,7 @@ states.DOCTYPESystemIdentifierSingleQuoted = {
   toString: function() { return "DOCTYPESystemIdentifierSingleQuoted"; },
 
   consume: function(lexer) {
+    throw "Not implemented";
   }
 };
 
@@ -1213,6 +1280,7 @@ states.afterDOCTYPESystemIdentifier = {
   toString: function() { return "afterDOCTYPESystemIdentifier"; },
 
   consume: function(lexer) {
+    throw "Not implemented";
   }
 };
 
@@ -1220,6 +1288,7 @@ states.bogusDOCTYPE = {
   toString: function() { return "bogusDOCTYPE"; },
 
   consume: function(lexer) {
+    throw "Not implemented";
   }
 };
 
@@ -1227,10 +1296,11 @@ states.CDATASection = {
   toString: function() { return "CDATASection"; },
 
   consume: function(lexer) {
+    throw "Not implemented";
   }
 };
 
-Tokenizer = function(input, strict) {
+var Tokenizer = function (input, strict) {
   this.input = input;
   this.pos = 0;
   this.state = states.data;
@@ -1241,14 +1311,14 @@ Tokenizer = function(input, strict) {
 Tokenizer.prototype = {
   lex: function() {
     var length = this.input.length;
-    while (this.pos < length) {
+    while (this.pos <= length) {
       this.state.consume(this);
     }
   },
 
   parseError: function(toState) {
     if (this.strict) {
-      msg = "Parse Error in " + this.state.toString() + " going to ";
+      var msg = "Parse Error in " + this.state.toString() + " going to ";
       msg += toState || this.state.toString();
       msg += " tokens so far: " + this.tokens.map(function(token) { return token.toTest(); });
       throw msg;
@@ -1271,12 +1341,12 @@ Tokenizer.prototype = {
     this.setState(state);
   },
 
-  setToken: function(token, param) {
-    this.token = new token(param);
+  setToken: function(TokenClass, param) {
+    this.token = new TokenClass(param);
   },
 
-  pushToken: function(token, param) {
-    this.token = new token(param);
+  pushToken: function(TokenClass, param) {
+    this.token = new TokenClass(param);
     this.emitCurrentToken();
   },
 
@@ -1309,15 +1379,15 @@ Tokenizer.prototype = {
   },
 
   emitCurrentToken: function() {
-    this.token.finalize();
+    this.token.finalize(this);
     this.tokens.push(this.token);
     this.token = null;
   }
 };
 
-var input = "<div id='1' class=foo>hi</div><!-- hi --><p><!-- bye --></p><span style=zomg zomg>";
-input = "<h a='b'c='d'><!-- foo -->bar";
-var lexer = new Tokenizer(input);
-lexer.lex();
+exports.Tokenizer = Tokenizer;
+//var input = "<div id='1' class=foo>hi</div><!-- hi --><p><!-- bye --></p><span style=zomg zomg>";
+//var lexer = new Tokenizer(input);
+//lexer.lex();
 
-console.log(lexer.tokens.map(function(token) { return token.toTest(); }));
+//console.log(lexer.tokens.map(function(token) { return token.toTest(); }));

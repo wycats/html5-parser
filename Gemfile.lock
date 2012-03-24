@@ -1,0 +1,22 @@
+GEM
+  remote: https://rubygems.org/
+  specs:
+    diff-lcs (1.1.3)
+    libv8 (3.3.10.4)
+    rspec (2.8.0)
+      rspec-core (~> 2.8.0)
+      rspec-expectations (~> 2.8.0)
+      rspec-mocks (~> 2.8.0)
+    rspec-core (2.8.0)
+    rspec-expectations (2.8.0)
+      diff-lcs (~> 1.1.2)
+    rspec-mocks (2.8.0)
+    therubyracer (0.9.10)
+      libv8 (~> 3.3.10)
+
+PLATFORMS
+  ruby
+
+DEPENDENCIES
+  rspec
+  therubyracer
