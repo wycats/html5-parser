@@ -1,6 +1,7 @@
 require "spec_helper"
 require "json"
 require "digest"
+require "timeout"
 
 def load_test_data(file)
   test_data = File.expand_path("../testdata/tokenizer", __FILE__)
@@ -43,7 +44,10 @@ describe "test1" do
       pending if description =~ /doctype/i
 
       expected = normalize_expected(output)
-      @tokenizer.tokenize(input).should == expected
+
+      Timeout.timeout(1) do
+        @tokenizer.tokenize(input).should == expected
+      end
     end
   end
 end

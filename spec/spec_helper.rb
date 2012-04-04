@@ -5,8 +5,14 @@ class TokenizerTest
     @context = V8::Context.new
     @context['console'] = { "log" => lambda { |string| puts string } }
 
-    parser = File.expand_path("../../parser.js", __FILE__)
-    exports = @context.eval "(function(exports) { #{File.read(parser)}; return exports; })({})", "parser.js"
+    load_path = File.expand_path("../../lib", __FILE__)
+
+    js_require = @context['require'] = lambda do |name|
+      contents = File.read(File.join(load_path, name))
+      @context.eval "(function(exports) { #{contents}; return exports; })({})", name
+    end
+
+    exports = js_require.call("parser.js")
     @tokenizer = exports['Tokenizer']
   end
 
