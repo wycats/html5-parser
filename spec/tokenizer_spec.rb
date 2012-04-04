@@ -8,47 +8,49 @@ def load_test_data(file)
   JSON.parse(File.read(File.join(test_data, file)))
 end
 
-json = load_test_data("test1.test")
+%w(test1 test2).each do |test|
+  json = load_test_data("#{test}.test")
 
-describe "test1" do
-  before do
-    @tokenizer = TokenizerTest.new
-  end
-
-  def normalize_expected(expected)
-    normalized = []
-
-    expected.each do |token|
-      if token.is_a?(String)
-        normalized << token
-      elsif token.first == "Character"
-        token.last.chars.each do |char|
-          normalized << ["Character", char]
-        end
-      else
-        normalized << token
-      end
+  describe test do
+    before do
+      @tokenizer = TokenizerTest.new
     end
 
-    normalized
-  end
+    def normalize_expected(expected)
+      normalized = []
 
-  json["tests"].each do |test_info|
-    description = test_info["description"]
-    input = test_info["input"]
-    output = test_info["output"]
+      expected.each do |token|
+        if token.is_a?(String)
+          normalized << token
+        elsif token.first == "Character"
+          token.last.chars.each do |char|
+            normalized << ["Character", char]
+          end
+        else
+          normalized << token
+        end
+      end
 
-    digest = Digest::SHA1.hexdigest(input)
+      normalized
+    end
 
-    it %{#{description} (processing "#{input}") - #{digest}} do
-      pending if description =~ /doctype/i
+    json["tests"].each do |test_info|
+      description = test_info["description"]
+      input = test_info["input"]
+      output = test_info["output"]
 
-      expected = normalize_expected(output)
+      digest = Digest::SHA1.hexdigest(input)
 
-      Timeout.timeout(1) do
-        @tokenizer.tokenize(input).should == expected
+      it %{#{description} (processing "#{input}") - #{digest}} do
+        pending if description =~ /doctype/i
+        pending if test_info["pending"]
+
+        expected = normalize_expected(output)
+
+        Timeout.timeout(1) do
+          @tokenizer.tokenize(input).should == expected
+        end
       end
     end
   end
 end
-

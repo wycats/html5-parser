@@ -85,6 +85,7 @@
 "output":["ParseError", ["Character", "&;"]]},
 
 {"description":"Unescaped ampersand in attribute value",
+"pending": true,
 "input":"<h a='&'>",
 "output":[["StartTag", "h", { "a":"&" }]]},
 
