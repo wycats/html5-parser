@@ -3,7 +3,10 @@ require "v8"
 class TokenizerTest
   def initialize
     @context = V8::Context.new
-    @context['console'] = { "log" => lambda { |string| puts string } }
+    @context['console'] = {
+      "log" => lambda { |string| puts string },
+      "dump" => lambda { |string| p string }
+    }
 
     load_path = File.expand_path("../../lib", __FILE__)
 
