@@ -34,6 +34,28 @@ end
       normalized
     end
 
+    def normalize_actual(actual)
+      normalized = []
+
+      actual.each do |token|
+        if token.is_a?(Array) && token.last.is_a?(Hash)
+          token = token.dup
+          attributes = token.last.dup
+
+          attributes = attributes.inject({}) do |hash, (key, value)|
+            hash.merge(key.to_s => value)
+          end
+
+          token.pop
+          token.push attributes
+        end
+
+        normalized.push token
+      end
+
+      normalized
+    end
+
     json["tests"].each do |test_info|
       description = test_info["description"]
       input = test_info["input"]
@@ -49,7 +71,10 @@ end
         expected = normalize_expected(output)
 
         Timeout.timeout(1) do
-          @tokenizer.tokenize(input).should == expected
+          actual = @tokenizer.tokenize(input)
+          actual = normalize_actual(actual)
+
+          actual.should == expected
         end
       end
     end
