@@ -8,7 +8,7 @@ def load_test_data(file)
   JSON.parse(File.read(File.join(test_data, file)))
 end
 
-%w(test1 test2 test3).each do |test|
+%w(test1 test2).each do |test|
   json = load_test_data("#{test}.test")
 
   describe test do
@@ -64,7 +64,6 @@ end
       digest = Digest::SHA1.hexdigest(input)
 
       it %{#{description} (processing "#{input}") - #{digest}} do
-        pending if description =~ /doctype/i
         pending if input.dump =~ /\\u\{[a-f0-9]{5,}\}/
         pending if test_info["pending"]
 

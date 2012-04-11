@@ -1,0 +1,640 @@
+data =
+  "&" -> charRefInData
+  "<" -> tagOpen
+  NULL (error) {
+    lexer.setToken(TkChar, char);
+    lexer.emitCurrentToken();
+  }
+  EOF {
+    lexer.setToken(TkEOF);
+    lexer.emitCurrentToken();
+  }
+  default {
+    lexer.setToken(TkChar, char);
+    lexer.emitCurrentToken();
+  }
+
+charRefInData =
+  default -> data {{
+    var token = lexer.consumeCharacterReference();
+
+    if (token) {
+      lexer.pushToken(token);
+    } else {
+      lexer.pushToken(TkChar, "&");
+    }
+  }}
+
+tagOpen =
+  "!" -> markupDeclarationOpen
+  "/" -> endTagOpen
+  /[A-Za-z]/ -> tagName {
+    lexer.setToken(TkStartTag, char.toLowerCase());
+  }
+  "?" (error) -> bogusComment {
+    lexer.setToken(TkComment, char);
+  }
+  default (error) -> data {
+    lexer.pushToken(TkChar, "<");
+    lexer.reconsume();
+  }
+
+endTagOpen =
+  /[A-Za-z]/ -> tagName {
+    lexer.setToken(TkEndTag, char.toLowerCase());
+  }
+  ">" (error) -> data
+  EOF (error) -> data {
+    lexer.pushToken(TkChar, "<");
+    lexer.pushToken(TkChar, "/");
+  }
+  default (error) -> bogusComment {
+    lexer.setToken(TkComment, char);
+  }
+
+tagName =
+  SPACE -> beforeAttributeName
+  "/" -> selfClosingStartTag
+  ">" -> data {
+    lexer.emitCurrentToken();
+  }
+  /[A-Z]/ {
+    token.addChars(char.toLowerCase());
+  }
+  NULL (error) {
+    token.addChars(REPLACEMENT);
+  }
+  EOF (error) -> data
+  default {
+    token.addChars(char);
+  }
+
+beforeAttributeName =
+  SPACE
+  "/" -> selfClosingStartTag
+  ">" -> data {
+    lexer.emitCurrentToken();
+  }
+  /[A-Z]/ -> attributeName {
+    token.newAttribute(char.toLowerCase(), lexer);
+  }
+  NULL (error) -> attributeName {
+    token.newAttribute(REPLACEMENT, lexer);
+  }
+  /["'<=]/ (error) -> attributeName {
+    token.newAttribute(char, lexer);
+  }
+  EOF (error) -> data
+  default -> attributeName {
+    token.newAttribute(char, lexer);
+  }
+
+attributeName =
+  SPACE -> afterAttributeName
+  "/" -> selfClosingStartTag
+  "=" -> beforeAttributeValue
+  ">" -> data {
+    lexer.emitCurrentToken();
+  }
+  /[A-Z]/ {
+    token.pushAttributeName(char);
+  }
+  NULL (error) {
+    token.pushAttributeName(REPLACEMENT);
+  }
+  /["'<]/ (error) {
+    token.pushAttributeName(char);
+  }
+  EOF (error) -> data
+  default {
+    token.pushAttributeName(char);
+  }
+
+afterAttributeName =
+  SPACE
+  "/" -> selfClosingStartTag
+  "=" -> beforeAttributeValue
+  ">" -> data {
+    lexer.emitCurrentToken();
+  }
+  /[A-Z]/ -> attributeName {
+    token.newAttribute(char.toLowerCase(), lexer);
+  }
+  NULL (error) -> attributeName {
+    token.newAttribute(REPLACEMENT, lexer);
+  }
+  /["'<]/ (error) -> attributeName {
+    token.newAttribute(char, lexer);
+  }
+  EOF (error) -> data
+  default -> attributeName {
+    token.newAttribute(char, lexer);
+  }
+
+beforeAttributeValue =
+  SPACE
+  QUOTE -> attributeValueDoubleQuoted
+  "&" -> attributeValueUnquoted {
+    lexer.reconsume();
+  }
+  "'" -> attributeValueSingleQuoted
+  NULL (error) -> attributeValueUnquoted {
+    token.pushAttributeValue(REPLACEMENT);
+  }
+  ">" (error) -> data {
+    lexer.emitCurrentToken();
+  }
+  /[<=`]/ (error) -> attributeValueUnquoted {
+    token.pushAttributeValue(char);
+  }
+  EOF (error) -> data
+  default -> attributeValueUnquoted {
+    token.pushAttributeValue(char);
+  }
+
+attributeValueDoubleQuoted =
+  QUOTE -> afterAttributeValueQuoted
+  "&" -> charRefInAttributeValue
+  NULL (error) {
+    token.pushAttributeValue(REPLACEMENT);
+  }
+  EOF (error) -> data
+  default {
+    token.pushAttributeValue(char);
+  }
+
+attributeValueSingleQuoted =
+  "'" -> afterAttributeValueQuoted
+  "&" -> charRefInAttributeValue
+  NULL (error) {
+    token.pushAttributeValue(REPLACEMENT);
+  }
+  EOF (error) -> data
+  default {
+    token.pushAttributeValue(char);
+  }
+
+attributeValueUnquoted =
+  SPACE -> beforeAttributeName
+  "&" -> charRefInAttributeValue
+  ">" -> data {
+    lexer.emitCurrentToken();
+  }
+  NULL (error) {
+    token.pushAttributeValue(REPLACEMENT);
+  }
+  /["'<=`]/ (error) {
+    token.pushAttributeValue(char);
+  }
+  EOF (error) -> data
+  default {
+    token.pushAttributeValue(char);
+  }
+
+charRefInAttributeValue =
+  default -> data {{
+    // This doesn't currently work
+    // TODO: specify the "allowed extra char"
+    // TODO: implement a history symbol
+    var token = lexer.consumeCharacterReference();
+
+    if (token) {
+      lexer.pushToken(token);
+    } else {
+      lexer.pushToken(TkChar, "&");
+    }
+  }}
+
+afterAttributeValueQuoted =
+  SPACE -> beforeAttributeName
+  "/" -> selfClosingStartTag
+  ">" -> data {
+    lexer.emitCurrentToken();
+  }
+  EOF (error) -> data
+  default (error) -> beforeAttributeName {
+    lexer.reconsume();
+  }
+
+selfClosingStartTag =
+  ">" -> data {
+    token.selfClosing = true;
+    lexer.emitCurrentToken();
+  }
+  EOF (error) -> data
+  default (error) -> beforeAttributeName {
+    lexer.reconsume();
+  }
+
+bogusComment =
+  NULL {
+    token.addChars(REPLACEMENT);
+  }
+  EOF -> data {
+    lexer.emitCurrentToken();
+  }
+  ">" -> data {
+    lexer.emitCurrentToken();
+  }
+  default {
+    token.addChars(char);
+  }
+
+markupDeclarationOpen =
+  default {{
+    if (lexer.peek(2) === "--") {
+      lexer.getChars(2);
+      lexer.setState('commentStart');
+      lexer.setToken(TkComment);
+    } else if (/DOCTYPE/i.test(lexer.peek(7))) {
+      lexer.getChars(7);
+      lexer.setState('DOCTYPE');
+    } else if (false) /* TODO: current node, not in HTML namespace, matching CDATA */ {
+
+    } else {
+      lexer.errorState('bogusComment');
+      lexer.setToken(TkComment);
+    }
+  }}
+
+commentStart =
+  "-" -> commentStartDash
+  NULL (error) -> comment {
+    token.addChars(REPLACEMENT);
+  }
+  ">" (error) -> data {
+    lexer.emitCurrentToken();
+  }
+  EOF (error) -> data {
+    lexer.emitCurrentToken();
+  }
+  default -> comment {
+    token.addChars(char);
+  }
+
+commentStartDash =
+  "-" -> commentEnd
+  NULL (error) -> comment {
+    token.addChars("-" + REPLACEMENT);
+  }
+  ">" (error) -> data {
+    lexer.emitCurrentToken();
+  }
+  EOF (error) -> data {
+    lexer.emitCurrentToken();
+  }
+  default -> comment {
+    token.addChars("-" + char);
+  }
+
+comment =
+  "-" -> commentEndDash
+  NULL (error) {
+    token.addChars(REPLACEMENT);
+  }
+  EOF (error) -> data {
+    lexer.emitCurrentToken();
+  }
+  default {
+    token.addChars(char);
+  }
+
+commentEndDash =
+  "-" -> commentEnd
+  NULL (error) -> comment {
+    token.addChars("-" + REPLACEMENT);
+  }
+  EOF (error) -> data {
+    lexer.emitCurrentToken();
+  }
+  default -> comment {
+    token.addChars("-" + char);
+  }
+
+commentEnd =
+  ">" -> data {
+    lexer.emitCurrentToken();
+  }
+  NULL (error) -> comment {
+    token.addChars("-" + REPLACEMENT);
+  }
+  "!" (error) -> commentEndBang
+  "-" (error) {
+    token.addChars("-");
+  }
+  EOF (error) -> data {
+    lexer.emitCurrentToken();
+  }
+  default (error) -> comment {
+    token.addChars("--" + char);
+  }
+
+commentEndBang =
+  "-" -> commentEndDash {
+    token.addChars("--!");
+  }
+  ">" -> data {
+    lexer.emitCurrentToken();
+  }
+  NULL (error) -> comment {
+    token.addChars("--!");
+  }
+  EOF (error) -> data {
+    lexer.emitCurrentToken();
+  }
+  default -> comment {
+    token.addChars("--!" + char);
+  }
+
+DOCTYPE =
+  SPACE -> beforeDOCTYPEName
+  EOF (error) -> data {
+    lexer.setToken(TkDOCTYPE);
+    lexer.token.forceQuirks = true;
+    lexer.emitCurrentToken();
+  }
+  default (error) -> beforeDOCTYPEName {
+    lexer.reconsume();
+  }
+
+beforeDOCTYPEName =
+  SPACE
+  /[A-Z]/ -> DOCTYPEName {
+    lexer.setToken(TkDOCTYPE);
+    lexer.token.name = char.toLowerCase();
+  }
+  NULL (error) -> DOCTYPEName {
+    lexer.setToken(TkDOCTYPE);
+    lexer.token.name = REPLACEMENT;
+  }
+  ">" (error) -> data {
+    lexer.setToken(TkDOCTYPE);
+    lexer.token.forceQuirks = true;
+    lexer.emitCurrentToken();
+  }
+  EOF (error) -> data {
+    lexer.setToken(TkDOCTYPE);
+    lexer.token.forceQuirks = true;
+    lexer.emitCurrentToken();
+  }
+  default -> DOCTYPEName {
+    lexer.setToken(TkDOCTYPE);
+    lexer.token.name = char;
+  }
+
+DOCTYPEName =
+  SPACE -> afterDOCTYPEName
+  ">" -> data {
+    lexer.emitCurrentToken();
+  }
+  /[A-Z]/ {
+    token.name += char.toLowerCase();
+  }
+  NULL (error) {
+    token.name += REPLACEMENT;
+  }
+  EOF (error) -> data {
+    token.forceQuirks = true;
+    lexer.emitCurrentToken();
+  }
+  default {
+    token.name += char;
+  }
+
+afterDOCTYPEName =
+  SPACE
+  ">" -> data {
+    lexer.emitCurrentToken();
+  }
+  EOF (error) -> data {
+    token.forceQuirks = true;
+    lexer.emitCurrentToken();
+  }
+  default {
+    var nextSix = char + lexer.peek(5);
+
+    if (/public/i.test(nextSix)) {
+      lexer.getChars(5);
+      lexer.setState('afterDOCTYPEPublicKeyword');
+    } else if (/system/i.test(nextSix)) {
+      lexer.getChars(5);
+      lexer.setState('afterDOCTYPESystemKeyword');
+    } else {
+      lexer.errorState('bogusDOCTYPE');
+      token.forceQuirks = true;
+    }
+  }
+
+afterDOCTYPEPublicKeyword =
+  SPACE -> beforeDOCTYPEPublicIdentifier
+  QUOTE (error) -> DOCTYPEPublicIdentifierDoubleQuoted {
+    token.publicIdentifier = "";
+  }
+  "'" (error) -> DOCTYPEPublicIdentifierSingleQuoted {
+    token.publicIdentifier = "";
+  }
+  ">" (error) -> data {
+    token.forceQuirks = true;
+    lexer.emitCurrentToken();
+  }
+  EOF (error) -> data {
+    token.forceQuirks = true;
+    lexer.emitCurrentToken();
+  }
+  default (error) -> bogusDOCTYPE {
+    token.forceQuirks = true;
+  }
+
+beforeDOCTYPEPublicIdentifier =
+  SPACE
+  QUOTE -> DOCTYPEPublicIdentifierDoubleQuoted {
+    token.publicIdentifier = "";
+  }
+  "'" -> DOCTYPEPublicIdentifierSingleQuoted {
+    token.publicIdentifier = "";
+  }
+  ">" (error) -> data {
+    token.forceQuirks = true;
+    lexer.emitCurrentToken();
+  }
+  EOF (error) -> data {
+    token.forceQuirks = true;
+    lexer.emitCurrentToken();
+  }
+  default (error) -> bogusDOCTYPE {
+    token.forceQuirks = true;
+  }
+
+DOCTYPEPublicIdentifierDoubleQuoted =
+  QUOTE -> afterDOCTYPEPublicIdentifier
+  NULL (error) {
+    token.publicIdentifier += REPLACEMENT;
+  }
+  ">" (error) -> data {
+    token.forceQuirks = true;
+    lexer.emitCurrentToken();
+  }
+  EOF (error) -> data {
+    token.forceQuirks = true;
+    lexer.emitCurrentToken();
+  }
+  default {
+    token.publicIdentifier += char;
+  }
+
+DOCTYPEPublicIdentifierSingleQuoted =
+  "'" -> afterDOCTYPEPublicIdentifier
+  NULL (error) {
+    token.publicIdentifier += REPLACEMENT;
+  }
+  ">" (error) -> data {
+    token.forceQuirks = true;
+    lexer.emitCurrentToken();
+  }
+  EOF (error) -> data {
+    token.forceQuirks = true;
+    lexer.emitCurrentToken();
+  }
+  default {
+    token.publicIdentifier += char;
+  }
+
+afterDOCTYPEPublicIdentifier =
+  SPACE -> betweenDOCTYPEPublicAndSystemIdentifier
+  ">" -> data {
+    lexer.emitCurrentToken();
+  }
+  QUOTE (error) -> DOCTYPESystemIdentifierDoubleQuoted {
+    token.systemIdentifier = "";
+  }
+  "'" (error) -> DOCTYPESystemIdentifierSingleQuoted {
+    token.systemIdentifier = "";
+  }
+  EOF (error) -> data {
+    token.forceQuirks = true;
+    lexer.emitCurrentToken();
+  }
+  default -> bogusDOCTYPE {
+    token.forceQuirks = true;
+  }
+
+betweenDOCTYPEPublicAndSystemIdentifier =
+  SPACE
+  ">" -> data {
+    lexer.emitCurrentToken();
+  }
+  QUOTE -> DOCTYPESystemIdentifierDoubleQuoted {
+    token.systemIdentifier = "";
+  }
+  "'" -> DOCTYPESystemIdentifierSingleQuoted {
+    token.systemIdentifier = "";
+  }
+  EOF (error) -> data {
+    token.forceQuirks = true;
+    lexer.emitCurrentToken();
+  }
+  default (error) -> bogusDOCTYPE {
+    token.forceQuirks = true;
+  }
+
+afterDOCTYPESystemKeyword =
+  SPACE -> beforeDOCTYPESystemIdentifier
+  QUOTE (error) -> DOCTYPESystemIdentifierDoubleQuoted {
+    token.systemIdentifier = "";
+  }
+  "'" (error) -> DOCTYPESystemIdentifierSingleQuoted {
+    token.systemIdentifier = "";
+  }
+  ">" (error) -> data {
+    token.forceQuirks = true;
+    lexer.emitCurrentToken();
+  }
+  EOF (error) -> data {
+    token.forceQuirks = true;
+    lexer.emitCurrentToken();
+  }
+  default (error) -> bogusDOCTYPE {
+    token.forceQuirks = true;
+  }
+
+beforeDOCTYPESystemIdentifier =
+  SPACE
+  QUOTE -> DOCTYPESystemIdentifierDoubleQuoted {
+    token.systemIdentifier = "";
+  }
+  "'" -> DOCTYPESystemIdentifierSingleQuoted {
+    token.systemIdentifier = "";
+  }
+  ">" (error) -> data {
+    token.forceQuirks = true;
+    lexer.emitCurrentToken();
+  }
+  EOF (error) -> data {
+    token.forceQuirks = true;
+    lexer.emitCurrentToken();
+  }
+  default (error) -> bogusDOCTYPE {
+    token.forceQuirks = true;
+  }
+
+DOCTYPESystemIdentifierDoubleQuoted =
+  QUOTE -> afterDOCTYPESystemIdentifier
+  NULL (error) {
+    token.systemIdentifier += REPLACEMENT;
+  }
+  ">" (error) -> data {
+    token.forceQuirks = true;
+    lexer.emitCurrentToken();
+  }
+  EOF (error) -> data {
+    token.forceQuirks = true;
+    lexer.emitCurrentToken();
+  }
+  default {
+    token.systemIdentifier += char;
+  }
+
+DOCTYPESystemIdentifierSingleQuoted =
+  "'" -> afterDOCTYPESystemIdentifier
+  NULL (error) {
+    token.systemIdentifier += REPLACEMENT;
+  }
+  ">" (error) -> data {
+    token.forceQuirks = true;
+    lexer.emitCurrentToken();
+  }
+  EOF (error) -> data {
+    token.forceQuirks = true;
+    lexer.emitCurrentToken();
+  }
+  default {
+    token.systemIdentifier += char;
+  }
+
+afterDOCTYPESystemIdentifier =
+  SPACE
+  ">" -> data {
+    lexer.emitCurrentToken();
+  }
+  EOF (error) -> data {
+    token.forceQuirks = true;
+    lexer.emitCurrentToken();
+  }
+  default (error) -> bogusDOCTYPE
+
+bogusDOCTYPE =
+  ">" -> data {
+    lexer.emitCurrentToken();
+  }
+  EOF -> data {
+    lexer.emitCurrentToken();
+  }
+
+scriptDataLessThan =
+  "/" {
+    lexer.tmpBuffer = "";
+  }
+  "!" -> scriptDataEscapeStart {
+    lexer.pushToken(TkChar, "<");
+    lexer.pushToken(TkChar, "!");
+  }
