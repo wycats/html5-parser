@@ -5,7 +5,9 @@ class TokenizerTest
     @context = V8::Context.new
     @context['console'] = {
       "log" => lambda { |string| puts string },
-      "dump" => lambda { |string| p string }
+      "inspect" => lambda { |string| p string },
+      "dump" => lambda { |string| puts string.dump },
+      "dumped" => lambda { |string| string.dump }
     }
 
     load_path = File.expand_path("../../lib", __FILE__)

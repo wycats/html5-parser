@@ -84,11 +84,17 @@ module HTML5
     def raw_section(section)
       rule = section.rules.first
 
+      if rule.transition == "last"
+        transition = "lexer.lastState.toString()"
+      elsif rule.transition
+        transition = "'#{rule.transition}'"
+      end
+
       out  = "states.#{section.name} = {\n"
       out += "  toString: function() { return '#{section.name}'; },\n\n"
 
       out += "  consume: function(lexer) {\n"
-      out += "    lexer.setState('#{rule.transition}');\n" if rule.transition
+      out += "    lexer.setState(#{transition});\n" if transition
       out += action(rule.action_content, 4)
       out += "  }\n"
       out += "};\n"
@@ -113,7 +119,7 @@ module HTML5
 
       if desc == "default"
         spaces = "      "
-      elsif rule.type == :regex
+      elsif rule.type == :regex || rule.value == "ANYSPACE"
         out += "      if (#{desc}.test(char)) {\n"
         spaces = "        "
       else
@@ -123,6 +129,8 @@ module HTML5
 
       if rule.transition && rule.error
         out += "#{spaces}lexer.errorState('#{rule.transition}');\n"
+      elsif rule.transition && rule.transition == "last"
+        out += "#{spaces}lexer.setState(lexer.lastState.toString());\n"
       elsif rule.transition
         out += "#{spaces}lexer.setState('#{rule.transition}');\n"
       elsif rule.error
@@ -185,6 +193,7 @@ module HTML5
 
     def case_rules?(section)
       section.rules.all? do |rule|
+        break false if rule.value == "ANYSPACE"
         rule.type == :string || rule.type == :symbol
       end
     end
@@ -312,7 +321,7 @@ module HTML5
       end
 
       unless token
-        @scanner.scan /NULL|EOF|SPACE|QUOTE|default/
+        @scanner.scan /NULL|EOF|SPACE|ANYSPACE|QUOTE|default/
         if @scanner.matched?
           token = RuleNode.new(:symbol, @scanner.matched)
         end

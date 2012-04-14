@@ -129,10 +129,12 @@
 "output":["ParseError", ["Character", "&# "], "ParseError", ["Character", "&#; "]]},
 
 {"description":"Non-BMP numeric entity",
+"pending": true,
 "input":"&#x10000;",
 "output":[["Character", "\uD800\uDC00"]]},
 
 {"description":"Maximum non-BMP numeric entity",
+"pending": true,
 "input":"&#X10FFFF;",
 "output":["ParseError", ["Character", "\uDBFF\uDFFF"]]},
 

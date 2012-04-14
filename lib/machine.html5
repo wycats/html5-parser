@@ -1,5 +1,7 @@
 data =
-  "&" -> charRefInData
+  "&" -> charRefInData {
+    lexer.additionalChar = null;
+  }
   "<" -> tagOpen
   NULL (error) {
     lexer.setToken(TkChar, char);
@@ -53,7 +55,7 @@ endTagOpen =
   }
 
 tagName =
-  SPACE -> beforeAttributeName
+  ANYSPACE -> beforeAttributeName
   "/" -> selfClosingStartTag
   ">" -> data {
     lexer.emitCurrentToken();
@@ -70,7 +72,7 @@ tagName =
   }
 
 beforeAttributeName =
-  SPACE
+  ANYSPACE
   "/" -> selfClosingStartTag
   ">" -> data {
     lexer.emitCurrentToken();
@@ -90,7 +92,7 @@ beforeAttributeName =
   }
 
 attributeName =
-  SPACE -> afterAttributeName
+  ANYSPACE -> afterAttributeName
   "/" -> selfClosingStartTag
   "=" -> beforeAttributeValue
   ">" -> data {
@@ -111,7 +113,7 @@ attributeName =
   }
 
 afterAttributeName =
-  SPACE
+  ANYSPACE
   "/" -> selfClosingStartTag
   "=" -> beforeAttributeValue
   ">" -> data {
@@ -132,7 +134,7 @@ afterAttributeName =
   }
 
 beforeAttributeValue =
-  SPACE
+  ANYSPACE
   QUOTE -> attributeValueDoubleQuoted
   "&" -> attributeValueUnquoted {
     lexer.reconsume();
@@ -154,7 +156,9 @@ beforeAttributeValue =
 
 attributeValueDoubleQuoted =
   QUOTE -> afterAttributeValueQuoted
-  "&" -> charRefInAttributeValue
+  "&" -> charRefInAttributeValue {
+    lexer.additionalChar = "\"";
+  }
   NULL (error) {
     token.pushAttributeValue(REPLACEMENT);
   }
@@ -165,7 +169,9 @@ attributeValueDoubleQuoted =
 
 attributeValueSingleQuoted =
   "'" -> afterAttributeValueQuoted
-  "&" -> charRefInAttributeValue
+  "&" -> charRefInAttributeValue {
+    lexer.additionalChar = "'";
+  }
   NULL (error) {
     token.pushAttributeValue(REPLACEMENT);
   }
@@ -175,8 +181,10 @@ attributeValueSingleQuoted =
   }
 
 attributeValueUnquoted =
-  SPACE -> beforeAttributeName
-  "&" -> charRefInAttributeValue
+  ANYSPACE -> beforeAttributeName
+  "&" -> charRefInAttributeValue {
+    lexer.additionalChar = ">";
+  }
   ">" -> data {
     lexer.emitCurrentToken();
   }
@@ -192,21 +200,21 @@ attributeValueUnquoted =
   }
 
 charRefInAttributeValue =
-  default -> data {{
+  default -> last {{
     // This doesn't currently work
     // TODO: specify the "allowed extra char"
     // TODO: implement a history symbol
     var token = lexer.consumeCharacterReference();
 
     if (token) {
-      lexer.pushToken(token);
+      lexer.token.pushAttributeValue(token.data);
     } else {
-      lexer.pushToken(TkChar, "&");
+      lexer.token.pushAttributeValue("&");
     }
   }}
 
 afterAttributeValueQuoted =
-  SPACE -> beforeAttributeName
+  ANYSPACE -> beforeAttributeName
   "/" -> selfClosingStartTag
   ">" -> data {
     lexer.emitCurrentToken();
@@ -275,7 +283,7 @@ commentStart =
 commentStartDash =
   "-" -> commentEnd
   NULL (error) -> comment {
-    token.addChars("-" + REPLACEMENT);
+    token.addChars("-", REPLACEMENT);
   }
   ">" (error) -> data {
     lexer.emitCurrentToken();
@@ -284,7 +292,7 @@ commentStartDash =
     lexer.emitCurrentToken();
   }
   default -> comment {
-    token.addChars("-" + char);
+    token.addChars("-", char);
   }
 
 comment =
@@ -302,13 +310,13 @@ comment =
 commentEndDash =
   "-" -> commentEnd
   NULL (error) -> comment {
-    token.addChars("-" + REPLACEMENT);
+    token.addChars("-", REPLACEMENT);
   }
   EOF (error) -> data {
     lexer.emitCurrentToken();
   }
   default -> comment {
-    token.addChars("-" + char);
+    token.addChars("-", char);
   }
 
 commentEnd =
@@ -316,7 +324,7 @@ commentEnd =
     lexer.emitCurrentToken();
   }
   NULL (error) -> comment {
-    token.addChars("-" + REPLACEMENT);
+    token.addChars("-", "-", REPLACEMENT);
   }
   "!" (error) -> commentEndBang
   "-" (error) {
@@ -326,28 +334,28 @@ commentEnd =
     lexer.emitCurrentToken();
   }
   default (error) -> comment {
-    token.addChars("--" + char);
+    token.addChars("-", "-", char);
   }
 
 commentEndBang =
   "-" -> commentEndDash {
-    token.addChars("--!");
+    token.addChars("-", "-", "!");
   }
   ">" -> data {
     lexer.emitCurrentToken();
   }
   NULL (error) -> comment {
-    token.addChars("--!");
+    token.addChars("-", "-", "!");
   }
   EOF (error) -> data {
     lexer.emitCurrentToken();
   }
   default -> comment {
-    token.addChars("--!" + char);
+    token.addChars("-", "-", "!" + char);
   }
 
 DOCTYPE =
-  SPACE -> beforeDOCTYPEName
+  ANYSPACE -> beforeDOCTYPEName
   EOF (error) -> data {
     lexer.setToken(TkDOCTYPE);
     lexer.token.forceQuirks = true;
@@ -358,7 +366,7 @@ DOCTYPE =
   }
 
 beforeDOCTYPEName =
-  SPACE
+  ANYSPACE
   /[A-Z]/ -> DOCTYPEName {
     lexer.setToken(TkDOCTYPE);
     lexer.token.name = char.toLowerCase();
@@ -383,7 +391,7 @@ beforeDOCTYPEName =
   }
 
 DOCTYPEName =
-  SPACE -> afterDOCTYPEName
+  ANYSPACE -> afterDOCTYPEName
   ">" -> data {
     lexer.emitCurrentToken();
   }
@@ -402,7 +410,7 @@ DOCTYPEName =
   }
 
 afterDOCTYPEName =
-  SPACE
+  ANYSPACE
   ">" -> data {
     lexer.emitCurrentToken();
   }
@@ -426,7 +434,7 @@ afterDOCTYPEName =
   }
 
 afterDOCTYPEPublicKeyword =
-  SPACE -> beforeDOCTYPEPublicIdentifier
+  ANYSPACE -> beforeDOCTYPEPublicIdentifier
   QUOTE (error) -> DOCTYPEPublicIdentifierDoubleQuoted {
     token.publicIdentifier = "";
   }
@@ -446,7 +454,7 @@ afterDOCTYPEPublicKeyword =
   }
 
 beforeDOCTYPEPublicIdentifier =
-  SPACE
+  ANYSPACE
   QUOTE -> DOCTYPEPublicIdentifierDoubleQuoted {
     token.publicIdentifier = "";
   }
@@ -500,7 +508,7 @@ DOCTYPEPublicIdentifierSingleQuoted =
   }
 
 afterDOCTYPEPublicIdentifier =
-  SPACE -> betweenDOCTYPEPublicAndSystemIdentifier
+  ANYSPACE -> betweenDOCTYPEPublicAndSystemIdentifier
   ">" -> data {
     lexer.emitCurrentToken();
   }
@@ -514,12 +522,12 @@ afterDOCTYPEPublicIdentifier =
     token.forceQuirks = true;
     lexer.emitCurrentToken();
   }
-  default -> bogusDOCTYPE {
+  default (error) -> bogusDOCTYPE {
     token.forceQuirks = true;
   }
 
 betweenDOCTYPEPublicAndSystemIdentifier =
-  SPACE
+  ANYSPACE
   ">" -> data {
     lexer.emitCurrentToken();
   }
@@ -538,7 +546,7 @@ betweenDOCTYPEPublicAndSystemIdentifier =
   }
 
 afterDOCTYPESystemKeyword =
-  SPACE -> beforeDOCTYPESystemIdentifier
+  ANYSPACE -> beforeDOCTYPESystemIdentifier
   QUOTE (error) -> DOCTYPESystemIdentifierDoubleQuoted {
     token.systemIdentifier = "";
   }
@@ -558,7 +566,7 @@ afterDOCTYPESystemKeyword =
   }
 
 beforeDOCTYPESystemIdentifier =
-  SPACE
+  ANYSPACE
   QUOTE -> DOCTYPESystemIdentifierDoubleQuoted {
     token.systemIdentifier = "";
   }
@@ -612,7 +620,7 @@ DOCTYPESystemIdentifierSingleQuoted =
   }
 
 afterDOCTYPESystemIdentifier =
-  SPACE
+  ANYSPACE
   ">" -> data {
     lexer.emitCurrentToken();
   }
